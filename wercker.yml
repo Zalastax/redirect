@@ -1,0 +1,66 @@
+dev:
+  box: youpic/node-beanstalk:4.0.0
+  steps:
+    - nahody/npm-install@1.1.1:
+      environment: development
+    - internal/watch:
+      code: npm run watch:start
+
+build:
+  box: youpic/node-beanstalk:4.0.0
+  steps:
+    - nahody/npm-install@1.1.1:
+      environment: production
+
+    - script:
+      name: make symlink
+      code: |
+        ln -s $WERCKER_SOURCE_DIR /usr/src/app
+
+    - script:
+      name: export release tag
+      code: |
+        export RELEASE_TAG=$(git describe --tag --exact-match $WERCKER_GIT_COMMIT 2>/dev/null || echo $WERCKER_GIT_COMMIT)
+
+    - script:
+      name: echo release tag
+      code: |
+        echo $RELEASE_TAG
+
+    # Push the image to docker hub
+    - internal/docker-push:
+      username: $DOCKER_USERNAME
+      password: $DOCKER_PASSWORD
+      tag: $RELEASE_TAG
+      repository: zalastax/redirect
+      registry: https://registry.hub.docker.com
+      cmd: sh -c 'cd /usr/src/app; npm start'
+
+    - nahody/npm-install@1.1.1:
+      environment: development
+    - npm-test
+
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_WEBHOOK_URL
+      channel: builds
+      username: wercker
+
+deploy:
+  box: youpic/deploy-beanstalk
+  steps:
+    - script:
+      name: export release tag
+      code: |
+        export RELEASE_TAG=$(git describe --tag --exact-match $WERCKER_GIT_COMMIT 2>/dev/null || echo $WERCKER_GIT_COMMIT)
+
+    - script:
+      name: echo release tag
+      code: |
+        echo $RELEASE_TAG
+
+  after-steps:
+    - slack-notifier:
+      url: $SLACK_WEBHOOK_URL
+      channel: builds
+      username: wercker
